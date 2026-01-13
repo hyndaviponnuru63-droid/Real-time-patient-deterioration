@@ -1,9 +1,10 @@
 import streamlit as st
+import pandas as pd
 from src.data_processing import load_data, preprocess_for_ml
 from src.lstm_model import train_lstm, predict_lstm
-from src.alerts import check_alerts
+from src.alerts import generate_risk_summary
 from src.live_sensor import simulate_live_sensor
-import pandas as pd
+
 
 st.set_page_config(page_title="ICU Patient Deterioration Dashboard", layout="wide")
 st.title("Real-time ICU Patient Deterioration Monitoring")
@@ -96,4 +97,5 @@ st.download_button(
     file_name="processed_icu_data.csv",
     mime="text/csv"
 )
+
 
