@@ -2,21 +2,15 @@ def calculate_risk(row):
     score = 0
 
     if row["age"] >= 65:
-        score += 2
-    if row["asa"] >= 3:
-        score += 3
-    if row["emop"] == 1:
-        score += 2
-    if row["icu_days"] >= 1:
-        score += 2
-    if row["preop_hb"] < 10:
         score += 1
-    if row["preop_na"] < 130 or row["preop_na"] > 150:
-        score += 1
-    if row["preop_gluc"] > 180:
-        score += 1
+    if row["heart_rate"] > 110:
+        score += 2
+    if row["oxygen_level"] < 92:
+        score += 2
+    if row["bp_systolic"] > 140 or row["bp_systolic"] < 90:
+        score += 2
 
-    if score >= 6:
+    if score >= 5:
         return "High"
     elif score >= 3:
         return "Medium"
@@ -28,19 +22,48 @@ def explain_risk(row):
     reasons = []
 
     if row["age"] >= 65:
-        reasons.append("Elderly patient")
-    if row["asa"] >= 3:
-        reasons.append("High ASA score")
-    if row["emop"] == 1:
-        reasons.append("Emergency surgery")
-    if row["icu_days"] >= 1:
-        reasons.append("ICU admission")
-    if row["preop_hb"] < 10:
-        reasons.append("Low hemoglobin")
-    if row["preop_gluc"] > 180:
-        reasons.append("High glucose")
+        reasons.append("Old age")
+    if row["heart_rate"] > 110:
+        reasons.append("High heart rate")
+    if row["oxygen_level"] < 92:
+        reasons.append("Low oxygen level")
+    if row["bp_systolic"] > 140:
+        reasons.append("High blood pressure")
+    if row["bp_systolic"] < 90:
+        reasons.append("Low blood pressure")
 
-    return ", ".join(reasons) if reasons else "No major risk factors"
+    return ", ".join(reasons) if reasons else "Normal vitals"
+
+
+def calculate_news(row):
+    """
+    Simplified NEWS score (educational version)
+    """
+    score = 0
+
+    # Oxygen saturation
+    if row["oxygen_level"] < 92:
+        score += 3
+    elif row["oxygen_level"] < 95:
+        score += 2
+
+    # Heart rate
+    if row["heart_rate"] > 130 or row["heart_rate"] < 40:
+        score += 3
+    elif row["heart_rate"] > 110:
+        score += 2
+
+    # Blood pressure
+    if row["bp_systolic"] < 90:
+        score += 3
+    elif row["bp_systolic"] < 100:
+        score += 2
+
+    # Age factor
+    if row["age"] >= 65:
+        score += 1
+
+    return score
 
 
 def highlight_risk(row):
@@ -48,4 +71,5 @@ def highlight_risk(row):
         return ["background-color: #ffcccc"] * len(row)
     elif row["risk_level"] == "Medium":
         return ["background-color: #fff3cd"] * len(row)
-    return [""] * len(row)
+    else:
+        return [""] * len(row)
