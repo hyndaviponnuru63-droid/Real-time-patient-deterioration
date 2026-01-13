@@ -1,10 +1,5 @@
 def compute_news(row):
-    """
-    Simplified NEWS scoring example:
-    - vitals missing, assume 0
-    """
     score = 0
-    # Example scoring logic
     if 'preop_htn' in row and row['preop_htn'] == 1:
         score += 1
     if 'preop_dm' in row and row['preop_dm'] == 1:
