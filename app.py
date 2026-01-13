@@ -12,7 +12,7 @@ st.set_page_config(page_title="Patient Deterioration Alert System", layout="wide
 st.title("🩺 Patient Deterioration Alert System")
 
 # Load data
-df_raw = pd.read_csv("data/clinical_data.csv")
+df_raw = pd.read_csv("clinical_data.csv")
 st.subheader("📂 Raw Dataset Preview")
 st.dataframe(df_raw.head())
 
@@ -74,3 +74,4 @@ st.dataframe(
 
 st.subheader("📊 Risk Distribution")
 st.bar_chart(df["risk_level"].value_counts())
+
