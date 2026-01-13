@@ -10,7 +10,7 @@ st.set_page_config(page_title="ICU Patient Deterioration Dashboard", layout="wid
 st.title("Real-time ICU Patient Deterioration Monitoring")
 
 # Load data
-df = load_data("data/clinical_data.csv")
+df = load_data("clinical_data.csv")
 st.sidebar.header("Data Overview")
 st.sidebar.write(f"Total records: {len(df)}")
 if st.sidebar.checkbox("Show raw data"):
@@ -49,3 +49,4 @@ st.download_button(
     file_name="processed_icu_data.csv",
     mime="text/csv"
 )
+
