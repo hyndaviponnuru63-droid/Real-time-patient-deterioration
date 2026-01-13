@@ -30,16 +30,62 @@ model, scaler = train_lstm(df_ml)
 st.header("Live ICU Simulation")
 placeholder = st.empty()
 alerts_placeholder = st.empty()
+risk_history = []
+from src.alerts import generate_risk_summary
+
+st.header("🫀 Live ICU Patient Monitoring")
+
+status_box = st.empty()
+reason_box = st.empty()
+trend_box = st.empty()
+data_box = st.empty()
+
+risk_history = []
 
 for live_row in simulate_live_sensor(df_ml):
+
     live_df = pd.DataFrame([live_row])
-    lstm_risk = predict_lstm(model, scaler, live_df.drop(['death_inhosp'], axis=1))
-    alerts = check_alerts(live_row, lstm_risk=lstm_risk)
-    
-    live_df['LSTM_Risk'] = lstm_risk
-    live_df['NEWS'] = live_df.apply(lambda x: check_alerts(x)[0] if len(check_alerts(x))>0 else 0, axis=1)
-    
-    placeholder.dataframe(live_df)
+
+    ml_risk = predict_lstm(
+        model,
+        scaler,
+        live_df.drop(['death_inhosp'], axis=1)
+    )
+
+    # Store last 10 ML risk values
+    risk_history.append(ml_risk)
+    if len(risk_history) > 10:
+        risk_history.pop(0)
+
+    # Generate explainable risk
+    risk = generate_risk_summary(live_row, ml_risk, risk_history)
+
+    # 🔴🟡🟢 ICU STATUS PANEL
+    if "CRITICAL" in risk["status"]:
+        status_box.error(risk["status"])
+    elif "MONITOR" in risk["status"]:
+        status_box.warning(risk["status"])
+    else:
+        status_box.success(risk["status"])
+
+    # 🧠 EXPLANATION PANEL
+    if risk["reasons"]:
+        reason_box.info("Reasons:\n- " + "\n- ".join(risk["reasons"]))
+    else:
+        reason_box.info("Patient stable. No warning signs.")
+
+    # 📈 RISK TREND CHART
+    trend_box.line_chart(
+        pd.DataFrame({"ML Risk": risk_history})
+    )
+
+    # 📋 LIVE DATA TABLE
+    live_df["NEWS"] = risk["news"]
+    live_df["MEWS"] = risk["mews"]
+    live_df["ML_Risk"] = round(ml_risk, 3)
+
+    data_box.dataframe(live_df)
+
     if alerts:
         alerts_placeholder.warning(alerts)
 
@@ -50,3 +96,4 @@ st.download_button(
     file_name="processed_icu_data.csv",
     mime="text/csv"
 )
+
