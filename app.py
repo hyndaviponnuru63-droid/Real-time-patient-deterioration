@@ -1,83 +1,93 @@
 import streamlit as st
 import pandas as pd
-import shap
-import matplotlib.pyplot as plt
 
-from src.auto_column_mapper import auto_map_columns
-from src.data_cleaning import clean_numeric_columns
-from src.risk_scoring import calculate_risk, explain_risk, highlight_risk
-from src.ml_model import train_model, predict_risk_probability
+from src.risk_scoring import (
+    calculate_risk,
+    explain_risk,
+    calculate_news,
+    highlight_risk
+)
 
 st.set_page_config(page_title="Patient Deterioration Alert System", layout="wide")
+
 st.title("🩺 Patient Deterioration Alert System")
 
-# Load data
-df_raw = pd.read_csv("clinical_data.csv")
+# -----------------------------
+# Load Dataset
+# -----------------------------
+df = pd.read_csv("clinical_data.csv")
 
-if df_raw.empty:
-    st.error(" Dataset is empty. Please check the CSV file.")
-    st.stop()
+# Convert required columns to numeric (safety)
+numeric_cols = ["age", "heart_rate", "oxygen_level", "bp_systolic"]
+for col in numeric_cols:
+    df[col] = pd.to_numeric(df[col], errors="coerce")
 
-st.subheader("📂 Raw Dataset Preview")
-st.dataframe(df_raw.head())
+df = df.dropna(subset=numeric_cols)
 
-# Auto column mapping
-df = auto_map_columns(df_raw)
-
-# Data cleaning
-df = clean_numeric_columns(df)
-
-# Rule-based risk
+# -----------------------------
+# Risk Calculations
+# -----------------------------
 df["risk_level"] = df.apply(calculate_risk, axis=1)
 df["risk_reason"] = df.apply(explain_risk, axis=1)
+df["NEWS_score"] = df.apply(calculate_news, axis=1)
 
-# Alerts
-high_risk_df = df[df["risk_level"] == "High"]
-if not high_risk_df.empty:
-    st.error(f"🚨 ALERT: {len(high_risk_df)} High-Risk Patients Detected!")
-else:
-    st.success("✅ No High-Risk Patients")
+# -----------------------------
+# Dashboard Metrics
+# -----------------------------
+st.subheader("📊 Patient Overview")
 
-# Metrics
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 col1.metric("Total Patients", len(df))
 col2.metric("High Risk", (df["risk_level"] == "High").sum())
 col3.metric("Medium Risk", (df["risk_level"] == "Medium").sum())
+col4.metric("Avg NEWS Score", round(df["NEWS_score"].mean(), 2))
 
-# ML prediction
-st.subheader("🤖 Machine Learning Risk Prediction")
-model, scaler, accuracy, X_train = train_model(df)
-df = predict_risk_probability(model, scaler, df)
-st.metric("ML Model Accuracy", f"{accuracy*100:.2f}%")
+# -----------------------------
+# Alerts
+# -----------------------------
+high_risk_df = df[df["risk_level"] == "High"]
 
-# SHAP explainability
-st.subheader("🧠 SHAP Explainability")
-explainer = shap.LinearExplainer(model, X_train)
-shap_values = explainer.shap_values(X_train)
+if not high_risk_df.empty:
+    st.error(f"🚨 ALERT: {len(high_risk_df)} High-Risk Patients Detected!")
+else:
+    st.success("✅ No High-Risk Patients Detected")
 
-fig, ax = plt.subplots()
-shap.summary_plot(shap_values, X_train, show=False)
-st.pyplot(fig)
+# -----------------------------
+# Data Table
+# -----------------------------
+st.subheader("📋 Patient Risk Table")
 
-# Download
+MAX_ROWS_FOR_STYLE = 500
+if len(df) <= MAX_ROWS_FOR_STYLE:
+    st.dataframe(df.style.apply(highlight_risk, axis=1))
+else:
+    st.dataframe(df)
+
+# -----------------------------
+# Download Section
+# -----------------------------
+st.subheader("⬇ Download Reports")
+
 st.download_button(
-    "⬇ Download High-Risk Patients",
+    "Download High-Risk Patients",
     high_risk_df.to_csv(index=False),
     file_name="high_risk_patients.csv",
     mime="text/csv"
 )
 
-# Tables
-st.subheader("📊 Patient Risk Table")
-st.dataframe(df.style.apply(highlight_risk, axis=1))
+# -----------------------------
+# Feature Info
+# -----------------------------
+with st.expander("ℹ Advanced Features Implemented"):
+    st.markdown("""
+- ✅ Rule-based patient deterioration detection  
+- ✅ ICU-specific NEWS scoring  
+- ✅ Explainable risk reasons  
+- ✅ Alert system for critical patients  
+- ✅ Streamlit Cloud deployment  
 
-st.subheader("📈 ML Risk Probability Ranking")
-st.dataframe(
-    df[["caseid", "risk_level", "risk_probability", "risk_reason"]]
-    .sort_values("risk_probability", ascending=False)
-)
-
-st.subheader("📊 Risk Distribution")
-st.bar_chart(df["risk_level"].value_counts())
-
-
+**Future Enhancements:**
+- Live sensor streaming
+- LSTM-based time-series prediction
+- Doctor login & patient history
+""")
