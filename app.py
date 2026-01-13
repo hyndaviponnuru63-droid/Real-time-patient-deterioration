@@ -13,6 +13,11 @@ st.title("🩺 Patient Deterioration Alert System")
 
 # Load data
 df_raw = pd.read_csv("clinical_data.csv")
+
+if df_raw.empty:
+    st.error(" Dataset is empty. Please check the CSV file.")
+    st.stop()
+
 st.subheader("📂 Raw Dataset Preview")
 st.dataframe(df_raw.head())
 
@@ -74,4 +79,5 @@ st.dataframe(
 
 st.subheader("📊 Risk Distribution")
 st.bar_chart(df["risk_level"].value_counts())
+
 
