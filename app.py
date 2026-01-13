@@ -87,9 +87,6 @@ for live_row in simulate_live_sensor(df_ml):
 
     data_box.dataframe(live_df)
 
-    if alerts:
-        alerts_placeholder.warning(alerts)
-
 # Download processed data
 st.download_button(
     "Download processed data",
@@ -97,5 +94,6 @@ st.download_button(
     file_name="processed_icu_data.csv",
     mime="text/csv"
 )
+
 
 
