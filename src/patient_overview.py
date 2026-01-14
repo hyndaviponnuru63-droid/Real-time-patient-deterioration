@@ -14,10 +14,10 @@ def generate_patient_risk_table(df, df_ml, model, scaler, feature_cols, predict_
 
         news = compute_news(row_raw)
         mews = compute_mews(row_raw)
-
-        if news >= 5 or ml_risk > 0.6:
+        
+        if news >= 4 or ml_risk > 0.5:
             status = "CRITICAL"
-        elif news >= 3 or ml_risk > 0.4:
+        elif news >= 2 or ml_risk > 0.3:
             status = "MONITOR"
         else:
             status = "STABLE"
