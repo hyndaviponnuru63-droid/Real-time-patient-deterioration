@@ -1,34 +1,29 @@
 import pandas as pd
-from src.risk_scoring import compute_news, compute_mews
 
-def generate_patient_risk_table(df, df_ml, model, scaler, feature_cols, predict_fn):
+def generate_patient_risk_table(
+    df,
+    df_ml,
+    model,
+    scaler,
+    feature_cols,
+    predict_fn
+):
     rows = []
 
-    for idx in df.index:
-        row_raw = df.loc[idx]
-        row_ml = df_ml.loc[idx]
+    for _, row in df.iterrows():
+        row_df = pd.DataFrame([row])
+        ml_risk = predict_fn(model, scaler, feature_cols, row_df)
 
-        row_ml_df = pd.DataFrame([row_ml])
-
-        ml_risk = predict_fn(model, scaler, feature_cols, row_ml_df)
-
-        news = compute_news(row_raw)
-        mews = compute_mews(row_raw)
-        
-        if news >= 4 or ml_risk > 0.5:
+        if ml_risk > 0.7:
             status = "CRITICAL"
-        elif news >= 2 or ml_risk > 0.3:
+        elif ml_risk > 0.4:
             status = "MONITOR"
         else:
             status = "STABLE"
 
         rows.append({
-            "subjectid": row_raw["subjectid"],
-            "age": row_raw["age"],
-            "department": row_raw["department"],
-            "NEWS": news,
-            "MEWS": mews,
-            "ML_Risk": round(float(ml_risk), 3),
+            "subjectid": row["subjectid"],
+            "Risk Score": round(ml_risk, 3),
             "Status": status
         })
 
