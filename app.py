@@ -59,13 +59,12 @@ for live_df in sensor:
 
     if len(st.session_state.risk_history) > 10:
         st.session_state.risk_history.pop(0)
-
-   status, reasons = generate_risk_summary(
-    live_df.iloc[0],   
-    ml_risk,
-    st.session_state.risk_history
-)
-
+        
+    status, reasons = generate_risk_summary(
+        live_df.iloc[0],   
+        ml_risk,
+        st.session_state.risk_history
+        )
 
     # -------- STATUS --------
     if status == "CRITICAL":
