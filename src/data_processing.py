@@ -4,11 +4,17 @@ def load_data(path):
     return pd.read_csv(path)
 
 def preprocess_for_ml(df):
-    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+    # select only numeric columns
+    feature_cols = df.select_dtypes(include="number").columns.tolist()
 
-    numeric_cols.remove("death_inhosp")
+    # target column
+    if "death_inhosp" in feature_cols:
+        feature_cols.remove("death_inhosp")
 
-    df_ml = df[numeric_cols + ["death_inhosp"]].copy()
-    df_ml = df_ml.fillna(df_ml.median())
+    # ML dataframe
+    df_ml = df[feature_cols + ["death_inhosp"]].copy()
+    df_ml = df_ml.fillna(df_ml.median(numeric_only=True))
 
-    return df_ml, numeric_cols
+    return df_ml, feature_cols
+
+
