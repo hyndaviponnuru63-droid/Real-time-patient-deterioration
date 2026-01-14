@@ -33,6 +33,7 @@ st.markdown("## 🚨 High-Risk Patient Overview")
 
 risk_table = generate_patient_risk_table(
     df,
+    df_ml,
     model,
     scaler,
     feature_cols,
@@ -121,6 +122,7 @@ for live_df in sensor:
 
     # ---------------- Display live data ----------------
     data_box.dataframe(live_df)
+
 
 
 
