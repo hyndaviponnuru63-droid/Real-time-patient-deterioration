@@ -7,7 +7,7 @@ from src.live_sensor import simulate_live_sensor
 from src.alerts import generate_risk_summary
 
 # ==================================================
-# STREAMLIT PAGE
+# STREAMLIT PAGE CONFIG
 # ==================================================
 st.set_page_config(page_title="ICU Dashboard", layout="wide")
 st.title("🫀 Real-Time ICU Patient Deterioration Monitor")
@@ -19,7 +19,7 @@ df = load_data("clinical_data.csv")
 df_ml = preprocess_for_ml(df)
 
 # ==================================================
-# CACHE MODEL (RESOURCE)
+# CACHE MODEL (RESOURCE-HEAVY)
 # ==================================================
 @st.cache_resource
 def load_model(df_ml):
@@ -28,7 +28,7 @@ def load_model(df_ml):
 model, scaler, feature_cols = load_model(df_ml)
 
 # ==================================================
-# CACHE DATA-ONLY RISK TABLES
+# CACHE RISK TABLES FUNCTION
 # ==================================================
 @st.cache_data
 def build_risk_tables(df):
@@ -54,19 +54,14 @@ def build_risk_tables(df):
         elif status == "MONITOR":
             monitor_list.append(record)
 
-    critical_df = (
-        pd.DataFrame(critical_list)
-        .sort_values("ml_risk", ascending=False)
-        .head(10)
-    )
+    critical_df = pd.DataFrame(critical_list)
+    monitor_df = pd.DataFrame(monitor_list)
 
-    monitor_df = (
-        pd.DataFrame(monitor_list)
-        .sort_values("ml_risk", ascending=False)
-        .head(10)
-    )
+    # Top 10 for downloads
+    critical_top10 = critical_df.sort_values("ml_risk", ascending=False).head(10)
+    monitor_top10 = monitor_df.sort_values("ml_risk", ascending=False).head(10)
 
-    return critical_df, monitor_df
+    return critical_df, monitor_df, critical_top10, monitor_top10
 
 # ==================================================
 # BUTTON TO GENERATE HIGH-RISK TABLES
@@ -75,31 +70,34 @@ st.subheader("🚨 High-Risk Patient Lists")
 
 if st.button("🔍 Generate Risk Tables"):
     with st.spinner("Analyzing patient risks..."):
-        limited_df = df.head(200)  # Safe limit for large datasets
-        critical_df, monitor_df = build_risk_tables(limited_df)
+        # Limit large dataset to avoid freezing
+        limited_df = df.head(200)
+        critical_df, monitor_df, critical_top10, monitor_top10 = build_risk_tables(limited_df)
 
     col1, col2 = st.columns(2)
 
+    # ---- Critical Patients Table ----
     with col1:
-        st.markdown("### 🔴 Critical Patients (Top 10)")
+        st.markdown("### 🔴 Critical Patients (All)")
         if not critical_df.empty:
             st.dataframe(critical_df)
             st.download_button(
-                "⬇️ Download Critical CSV",
-                critical_df.to_csv(index=False),
+                "⬇️ Download Top 10 Critical CSV",
+                critical_top10.to_csv(index=False),
                 file_name="critical_patients_top10.csv",
                 mime="text/csv"
             )
         else:
             st.success("No critical patients found")
 
+    # ---- Monitor Patients Table ----
     with col2:
-        st.markdown("### 🟡 Monitor Patients (Top 10)")
+        st.markdown("### 🟡 Monitor Patients (All)")
         if not monitor_df.empty:
             st.dataframe(monitor_df)
             st.download_button(
-                "⬇️ Download Monitor CSV",
-                monitor_df.to_csv(index=False),
+                "⬇️ Download Top 10 Monitor CSV",
+                monitor_top10.to_csv(index=False),
                 file_name="monitor_patients_top10.csv",
                 mime="text/csv"
             )
@@ -129,7 +127,7 @@ if start_monitoring:
     trend_box = st.empty()
     data_box = st.empty()
 
-    for _ in range(20):  # Safe limit to avoid infinite loop
+    for _ in range(20):  # Safe loop to avoid freezing
         live_df = next(sensor)
 
         ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
