@@ -6,8 +6,6 @@ from src.lstm_model import train_lstm, predict_lstm
 from src.patient_overview import generate_patient_risk_table
 from src.live_sensor import simulate_live_sensor
 from src.alerts import generate_risk_summary
-from datetime import datetime
-import time
 
 st.set_page_config(page_title="ICU Dashboard", layout="wide")
 st.title("🫀 Real-Time ICU Patient Deterioration Monitor")
@@ -15,7 +13,6 @@ st.title("🫀 Real-Time ICU Patient Deterioration Monitor")
 # ---------------- LOAD DATA ----------------
 df = load_data("clinical_data.csv")
 df_ml, feature_cols = preprocess_for_ml(df)
-
 st.success("✅ Data loaded successfully")
 st.write("Dataset shape:", df.shape)
 
@@ -36,46 +33,63 @@ if "risk_table" not in st.session_state:
         predict_lstm
     )
 
+# Display full risk table
 st.dataframe(st.session_state.risk_table)
 
-# Download CSV
+# Download full risk table
 st.download_button(
-    "⬇️ Download High-Risk Patients CSV",
+    "⬇️ Download Full Risk Table",
     st.session_state.risk_table.to_csv(index=False),
-    "high_risk_patients.csv",
+    "risk_table.csv",
     "text/csv"
 )
 
+# Show critical / monitor patients only
+critical_df = st.session_state.risk_table[
+    st.session_state.risk_table["Status"].isin(["CRITICAL", "MONITOR"])
+]
+if not critical_df.empty:
+    st.markdown("### 🔴 Critical / Monitor Patients")
+    st.dataframe(critical_df)
+
+    # Download critical patients
+    st.download_button(
+        "⬇️ Download Critical / Monitor Patients CSV",
+        critical_df.to_csv(index=False),
+        "critical_patients.csv",
+        "text/csv"
+    )
+
 # ---------------- SELECT PATIENT ----------------
-st.markdown("## 🧑‍⚕️ Select Patient to Monitor Live")
+st.markdown("## 🧑‍⚕️ Monitor a Patient Live")
 
 patient_id = st.selectbox(
     "Select Patient ID",
     df["subjectid"].unique()
 )
 
-# Initialize session state for live monitoring
+# Initialize session state
 if "risk_history" not in st.session_state:
     st.session_state.risk_history = []
 if "live_index" not in st.session_state:
     st.session_state.live_index = 0
-if "patient_data" not in st.session_state:
+if "patient_data" not in st.session_state or st.session_state.patient_data["subjectid"].iloc[0] != patient_id:
     st.session_state.patient_data = df[df["subjectid"] == patient_id].reset_index(drop=True)
+    st.session_state.risk_history = []
+    st.session_state.live_index = 0
 
 patient_data = st.session_state.patient_data
 
-# ---------------- PLACEHOLDERS ----------------
+# Placeholders for live monitoring
 status_box = st.empty()
 trend_box = st.empty()
 data_box = st.empty()
 
-# ---------------- SIMULATE LIVE SENSOR ----------------
-# Append random data to simulate live sensor if needed
-if st.button("Simulate Next Live Update"):
+# Button to simulate live update
+if st.button("▶️ Next Live Update"):
 
-    # Get next row (loop if we reach the end)
     idx = st.session_state.live_index % len(patient_data)
-    live_row = patient_data.iloc[[idx]]  # keep as DataFrame
+    live_row = patient_data.iloc[[idx]]
     st.session_state.live_index += 1
 
     # Simulate vitals if missing
@@ -86,16 +100,16 @@ if st.button("Simulate Next Live Update"):
     # Predict risk
     ml_risk = predict_lstm(model, scaler, feature_cols, live_row)
     st.session_state.risk_history.append(ml_risk)
-    st.session_state.risk_history = st.session_state.risk_history[-20:]  # last 20
+    st.session_state.risk_history = st.session_state.risk_history[-20:]
 
-    # Status and reasons
+    # Status & reasons
     status, reasons = generate_risk_summary(
         live_row.iloc[0],
         ml_risk,
         st.session_state.risk_history
     )
 
-    # Display patient status
+    # Display status
     if status == "CRITICAL":
         status_box.error(f"🔴 CRITICAL CONDITION\nReasons: {', '.join(reasons)}")
     elif status == "MONITOR":
@@ -104,9 +118,7 @@ if st.button("Simulate Next Live Update"):
         status_box.success("🟢 Patient stable. No warning signs.")
 
     # Live risk trend
-    trend_box.line_chart(
-        pd.DataFrame(st.session_state.risk_history, columns=["Risk Score"])
-    )
+    trend_box.line_chart(pd.DataFrame(st.session_state.risk_history, columns=["Risk Score"]))
 
     # Show current patient row
     data_box.dataframe(live_row)
