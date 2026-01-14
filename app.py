@@ -1,106 +1,110 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import time
-import plotly.express as px
-from datetime import datetime
+from src.data_processing import load_data, preprocess_for_ml
+from src.lstm_model import train_lstm, predict_lstm
+from src.patient_overview import generate_patient_risk_table
+from src.live_sensor import simulate_live_sensor
+from src.alerts import generate_risk_summary
 
-# -----------------------------
-# Configuration
-# -----------------------------
-st.set_page_config(page_title="Real-time Patient Deterioration Alert System", layout="wide")
-st.title("🚨 Real-time Patient Deterioration Alert System")
+st.set_page_config(page_title="ICU Dashboard", layout="wide")
+st.title("🫀 Real-Time ICU Patient Deterioration Monitor")
 
-# -----------------------------
-# Load dataset
-# -----------------------------
-@st.cache_data
-def load_data():
-    df = pd.read_csv("data/clinical_data.csv", parse_dates=['casestart', 'caseend', 'anestart', 'aneend', 'opstart', 'opend'])
-    df = df.fillna(0)  # handle missing values simply
-    return df
+# ---------------- LOAD DATA ----------------
+df = load_data("clinical_data.csv")
+df_ml, feature_cols = preprocess_for_ml(df)
 
-df = load_data()
-st.success(f"✅ Data loaded successfully. Dataset shape: {df.shape}")
+st.success("✅ Data loaded successfully")
+st.write("Dataset shape:", df.shape)
 
-# -----------------------------
-# Sidebar: Patient selector
-# -----------------------------
-patient_ids = df['subjectid'].unique()
-selected_patient = st.sidebar.selectbox("Select Patient ID", patient_ids)
+# ---------------- TRAIN MODEL ----------------
+model, scaler = train_lstm(df_ml, feature_cols)
+st.success("✅ LSTM model trained")
 
-# Filter dataset for selected patient
-patient_data = df[df['subjectid'] == selected_patient].copy()
+# ---------------- HIGH-RISK PATIENT OVERVIEW ----------------
+st.markdown("## 🚨 High-Risk Patient Overview")
 
-# -----------------------------
-# Risk Scoring Function
-# -----------------------------
-def calculate_risk(row):
-    """Simple example: mark high-risk patients"""
-    # Example: high risk if ICU days > 5 or death_inhosp = 1
-    if row['icu_days'] > 5 or row['death_inhosp'] == 1:
-        return "High"
-    else:
-        return "Low"
+risk_table = generate_patient_risk_table(
+    df,
+    df_ml,
+    model,
+    scaler,
+    feature_cols,
+    predict_lstm
+)
 
-df['risk'] = df.apply(calculate_risk, axis=1)
-
-# -----------------------------
-# Display High-Risk Patients
-# -----------------------------
-high_risk_df = df[df['risk'] == "High"]
-st.subheader("🚨 High-Risk Patient Overview")
-st.dataframe(high_risk_df.head(5))  # Show 5 rows initially
+# Show full table with features
+st.dataframe(risk_table)
 
 # Download CSV button
 st.download_button(
-    label="📥 Download High-Risk Patients CSV",
-    data=high_risk_df.to_csv(index=False),
-    file_name="high_risk_patients.csv",
-    mime="text/csv"
+    "⬇️ Download High-Risk Patients CSV",
+    risk_table.to_csv(index=False),
+    "high_risk_patients.csv",
+    "text/csv"
 )
 
-# -----------------------------
-# Live Trend Simulation (Vitals)
-# -----------------------------
-st.subheader("📈 Patient Live Trends")
+# Filter high-risk patients for reference
+high_risk_df = risk_table[risk_table["Status"].isin(["CRITICAL", "MONITOR"])]
+if not high_risk_df.empty:
+    st.markdown("### 🔴 High-Risk Patients")
+    st.dataframe(high_risk_df)
 
-# Example vitals (replace with your dataset columns)
-vitals_columns = ['heart_rate', 'oxygen_level', 'bp_systolic']
+# ---------------- SELECT PATIENT ----------------
+st.markdown("## 🧑‍⚕️ Select Patient to Monitor Live")
 
-# Check if vitals columns exist
-for col in vitals_columns:
-    if col not in patient_data.columns:
-        patient_data[col] = np.random.randint(60, 120, size=len(patient_data))  # simulate if missing
+patient_id = st.selectbox(
+    "Select Patient ID",
+    df["subjectid"].unique()
+)
 
-# Plot trend for selected patient
-fig = px.line(patient_data, x='casestart', y=vitals_columns,
-              labels={'value': 'Vital Signs', 'casestart': 'Time', 'variable': 'Vitals'},
-              title=f"Live Trend for Patient ID: {selected_patient}")
-st.plotly_chart(fig, use_container_width=True)
+patient_row = df[df["subjectid"] == patient_id].iloc[0]
 
-# -----------------------------
-# Status Updates Simulation
-# -----------------------------
-st.subheader("🔔 Status Updates")
-status_placeholder = st.empty()
+# ---------------- SESSION STATE ----------------
+if "risk_history" not in st.session_state:
+    st.session_state.risk_history = []
 
-# Simulate real-time status updates
-statuses = [
-    "Patient stable",
-    "Slight deterioration observed",
-    "High-risk alert triggered",
-    "Vitals returning to normal",
-    "Critical condition! Immediate attention required"
-]
+# ---------------- LIVE SENSOR ----------------
+sensor = simulate_live_sensor(patient_row)
+status_box = st.empty()
+trend_box = st.empty()
+data_box = st.empty()
 
-# Display updates for selected patient
-for i in range(3):  # simulate 3 status updates
-    status = np.random.choice(statuses)
-    status_placeholder.info(f"[{datetime.now().strftime('%H:%M:%S')}] {status}")
-    time.sleep(1)
+# ---------------- LIVE MONITORING SIMULATION ----------------
+st.markdown("### 🔴 Live Monitoring (simulated)")
 
-# -----------------------------
-# End of App
-# -----------------------------
-st.success("✅ Dashboard loaded successfully")
+for live_df in sensor:
+
+    # Predict ML risk
+    ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
+    st.session_state.risk_history.append(ml_risk)
+    st.session_state.risk_history = st.session_state.risk_history[-20:]  # keep last 20 points
+
+    # Generate status & reasons
+    status, reasons = generate_risk_summary(
+        live_df.iloc[0],
+        ml_risk,
+        st.session_state.risk_history
+    )
+
+    # Display patient status
+    if status == "CRITICAL":
+        status_box.error(f"🔴 CRITICAL CONDITION\nReasons: {', '.join(reasons)}")
+    elif status == "MONITOR":
+        status_box.warning(f"🟡 NEEDS MONITORING\nReasons: {', '.join(reasons)}")
+    else:
+        status_box.success("🟢 Patient stable. No warning signs.")
+
+    # Display live risk trend
+    trend_box.line_chart(
+        pd.DataFrame(st.session_state.risk_history, columns=["Risk Score"])
+    )
+
+    # Display live patient row
+    data_box.dataframe(live_df)
+
+    # Small delay to simulate live update
+    time.sleep(1)  # adjust for faster/slower updates
+
+# ---------------- END OF LIVE MONITOR ----------------
+st.success("✅ Live monitoring complete")
