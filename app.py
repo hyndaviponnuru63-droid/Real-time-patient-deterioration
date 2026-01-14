@@ -18,7 +18,7 @@ df = load_data("clinical_data.csv")
 df_ml = preprocess_for_ml(df)
 
 # ---------------- TRAIN MODEL ----------------
-model, scaler = train_lstm(df_ml)
+model, scaler, feature_cols = train_lstm(df_ml)
 
 # ---------------- SELECT PATIENT ----------------
 patient_ids = df["subjectid"].unique()
@@ -49,13 +49,12 @@ data_box = st.empty()
 # ---------------- LIVE LOOP ----------------
 for live_df in sensor:
 
-    # ML prediction (IMPORTANT FIX)
     ml_risk = predict_lstm(
-        model,
-        scaler,
-        live_df.select_dtypes(include="number")
-    )
-
+    model,
+    scaler,
+    feature_cols,
+    live_df
+)
     st.session_state.risk_history.append(ml_risk)
 
     if len(st.session_state.risk_history) > 10:
@@ -80,3 +79,4 @@ for live_df in sensor:
 
     # -------- TABLE --------
     data_box.dataframe(live_df)
+
