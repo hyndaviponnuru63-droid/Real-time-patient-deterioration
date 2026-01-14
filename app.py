@@ -1,124 +1,114 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
+import io
 from src.data_processing import load_data, preprocess_for_ml
 from src.lstm_model import train_lstm, predict_lstm
-from src.patient_overview import generate_patient_risk_table
 from src.live_sensor import simulate_live_sensor
 from src.alerts import generate_risk_summary
 
 st.set_page_config(page_title="ICU Dashboard", layout="wide")
 st.title("🫀 Real-Time ICU Patient Deterioration Monitor")
 
-# ---------------- LOAD DATA ----------------
+# ------------------- Load and preprocess data -------------------
 df = load_data("clinical_data.csv")
-df_ml, feature_cols = preprocess_for_ml(df)
-st.success("✅ Data loaded successfully")
-st.write("Dataset shape:", df.shape)
+df_ml = preprocess_for_ml(df)
 
-# ---------------- TRAIN MODEL ----------------
-model, scaler = train_lstm(df_ml, feature_cols)
-st.success("✅ LSTM model trained")
+# ------------------- Train ML model -------------------
+model, scaler, feature_cols = train_lstm(df_ml)
 
-# ---------------- HIGH-RISK PATIENT TABLE ----------------
-st.markdown("## 🚨 High-Risk Patient Overview")
+# ------------------- Live Risk Summary Table -------------------
+risk_summary_list = []
 
-if "risk_table" not in st.session_state:
-    st.session_state.risk_table = generate_patient_risk_table(
-        df,
-        df_ml,
-        model,
-        scaler,
-        feature_cols,
-        predict_lstm
-    )
+for _, patient_row in df.iterrows():
+    ml_risk = predict_lstm(model, scaler, feature_cols, patient_row.to_frame().T)
+    status, reasons = generate_risk_summary(patient_row, ml_risk, [])
+    if status in ["CRITICAL", "MONITOR"]:
+        risk_summary_list.append({
+            "subjectid": patient_row["subjectid"],
+            "status": status,
+            "ML Risk": round(ml_risk, 2),
+            "Reasons": "; ".join(reasons)
+        })
 
-# Display full risk table
-st.dataframe(st.session_state.risk_table)
+if risk_summary_list:
+    risk_df = pd.DataFrame(risk_summary_list)
+    st.markdown("## 🚨 Patients Needing Attention")
 
-# Download full risk table
-st.download_button(
-    "⬇️ Download Full Risk Table",
-    st.session_state.risk_table.to_csv(index=False),
-    "risk_table.csv",
-    "text/csv"
-)
+    # Color-coded table
+    def color_status(val):
+        if val == "CRITICAL":
+            return "background-color: red; color: white"
+        elif val == "MONITOR":
+            return "background-color: yellow; color: black"
+        else:
+            return ""
 
-# Show critical / monitor patients only
-critical_df = st.session_state.risk_table[
-    st.session_state.risk_table["Status"].isin(["CRITICAL", "MONITOR"])
-]
-if not critical_df.empty:
-    st.markdown("### 🔴 Critical / Monitor Patients")
-    st.dataframe(critical_df)
+    st.dataframe(risk_df.style.applymap(color_status, subset=["status"]))
 
-    # Download critical patients
+    # CSV download
+    csv_buffer = io.StringIO()
+    risk_df.to_csv(csv_buffer, index=False)
     st.download_button(
-        "⬇️ Download Critical / Monitor Patients CSV",
-        critical_df.to_csv(index=False),
-        "critical_patients.csv",
-        "text/csv"
+        label="Download Risk Patients CSV",
+        data=csv_buffer.getvalue(),
+        file_name="critical_monitor_patients.csv",
+        mime="text/csv"
     )
+else:
+    st.info("No CRITICAL or MONITOR patients at the moment.")
 
-# ---------------- SELECT PATIENT ----------------
-st.markdown("## 🧑‍⚕️ Monitor a Patient Live")
+# ------------------- Single Patient Monitoring -------------------
+patient_ids = df["subjectid"].unique()
+selected_patient = st.selectbox("Select Patient ID for Live Monitoring", patient_ids)
+patient_row = df[df["subjectid"] == selected_patient].iloc[0]
 
-patient_id = st.selectbox(
-    "Select Patient ID",
-    df["subjectid"].unique()
-)
+st.markdown(f"### 🧑‍⚕️ Currently Monitoring Patient ID: {selected_patient}")
 
-# Initialize session state
-if "risk_history" not in st.session_state:
+# Session state for risk history
+if "last_patient" not in st.session_state:
+    st.session_state.last_patient = selected_patient
     st.session_state.risk_history = []
-if "live_index" not in st.session_state:
-    st.session_state.live_index = 0
-if "patient_data" not in st.session_state or st.session_state.patient_data["subjectid"].iloc[0] != patient_id:
-    st.session_state.patient_data = df[df["subjectid"] == patient_id].reset_index(drop=True)
+
+if selected_patient != st.session_state.last_patient:
     st.session_state.risk_history = []
-    st.session_state.live_index = 0
+    st.session_state.last_patient = selected_patient
 
-patient_data = st.session_state.patient_data
-
-# Placeholders for live monitoring
+# Live sensor simulation
+sensor = simulate_live_sensor(patient_row)
 status_box = st.empty()
 trend_box = st.empty()
 data_box = st.empty()
 
-# Button to simulate live update
-if st.button("▶️ Next Live Update"):
-
-    idx = st.session_state.live_index % len(patient_data)
-    live_row = patient_data.iloc[[idx]]
-    st.session_state.live_index += 1
-
-    # Simulate vitals if missing
-    for col in ["heart_rate", "oxygen_level", "bp_systolic"]:
-        if col not in live_row.columns:
-            live_row[col] = np.random.randint(60, 120, size=1)
-
-    # Predict risk
-    ml_risk = predict_lstm(model, scaler, feature_cols, live_row)
+# Live loop
+for live_df in sensor:
+    ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
     st.session_state.risk_history.append(ml_risk)
-    st.session_state.risk_history = st.session_state.risk_history[-20:]
+    if len(st.session_state.risk_history) > 10:
+        st.session_state.risk_history.pop(0)
 
-    # Status & reasons
     status, reasons = generate_risk_summary(
-        live_row.iloc[0],
+        live_df.iloc[0],  # pass Series
         ml_risk,
         st.session_state.risk_history
     )
 
-    # Display status
+    # Status display
     if status == "CRITICAL":
-        status_box.error(f"🔴 CRITICAL CONDITION\nReasons: {', '.join(reasons)}")
+        status_box.error("🔴 CRITICAL CONDITION")
     elif status == "MONITOR":
-        status_box.warning(f"🟡 NEEDS MONITORING\nReasons: {', '.join(reasons)}")
+        status_box.warning("🟡 NEEDS MONITORING")
     else:
         status_box.success("🟢 Patient stable. No warning signs.")
 
-    # Live risk trend
-    trend_box.line_chart(pd.DataFrame(st.session_state.risk_history, columns=["Risk Score"]))
+    # Trend line
+    if len(st.session_state.risk_history) >= 2:
+        trend_data = pd.DataFrame(
+            st.session_state.risk_history,
+            columns=["Risk Score"]
+        )
+        trend_box.line_chart(trend_data)
+    else:
+        trend_box.info("Collecting live risk data for this patient…")
 
-    # Show current patient row
-    data_box.dataframe(live_row)
+    # Current vitals table
+    data_box.dataframe(live_df)
