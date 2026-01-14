@@ -40,7 +40,8 @@ data_box = st.empty()
 # Live loop
 for live_df in sensor:
     ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
-    st.session_state.risk_history.append(ml_risk)
+    if ml_risk is not None:
+        st.session_state.risk_history.append(float(ml_risk))
     if len(st.session_state.risk_history) > 10:
         st.session_state.risk_history.pop(0)
 
@@ -58,8 +59,16 @@ for live_df in sensor:
     else:
         status_box.success("🟢 Patient stable. No warning signs.")
 
-    # Trend
-    trend_box.line_chart(st.session_state.risk_history)
+    # Trend line (single patient)
+    if len(st.session_state.risk_history) >= 2:
+        trend_data = pd.DataFrame(
+            st.session_state.risk_history,
+            columns=["Risk Score"]
+        )
+        trend_box.line_chart(trend_data)
+    else:
+        trend_box.info("Collecting live risk data for this patient…")
 
     # Table
     data_box.dataframe(live_df)
+
