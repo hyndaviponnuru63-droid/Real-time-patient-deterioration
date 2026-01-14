@@ -2,8 +2,10 @@ import streamlit as st
 import pandas as pd
 from src.data_processing import load_data, preprocess_for_ml
 from src.lstm_model import train_lstm, predict_lstm
+from src.patient_overview import generate_patient_risk_table
 from src.live_sensor import simulate_live_sensor
 from src.alerts import generate_risk_summary
+
 
 st.set_page_config(page_title="ICU Dashboard", layout="wide")
 st.title("🫀 Real-Time ICU Patient Deterioration Monitor")
@@ -24,6 +26,34 @@ def get_model():
     return model, scaler, feature_cols
 
 model, scaler, feature_cols = get_model()
+
+# HIGH-RISK PATIENT OVERVIEW (ALL PATIENTS)
+
+st.markdown("## 🚨 High-Risk Patient Overview")
+
+risk_table = generate_patient_risk_table(
+    df,
+    model,
+    scaler,
+    feature_cols,
+    predict_lstm
+)
+
+high_risk_df = risk_table[
+    risk_table["Status"].isin(["CRITICAL", "MONITOR"])
+]
+
+if len(high_risk_df) > 0:
+    st.dataframe(high_risk_df)
+
+    st.download_button(
+        label="⬇️ Download Critical & Monitor Patients (CSV)",
+        data=high_risk_df.to_csv(index=False),
+        file_name="high_risk_patients.csv",
+        mime="text/csv"
+    )
+else:
+    st.success("✅ No patients currently in CRITICAL or MONITOR state.")
 
 # ---------------- Select patient ----------------
 patient_ids = df["subjectid"].unique()
@@ -91,5 +121,6 @@ for live_df in sensor:
 
     # ---------------- Display live data ----------------
     data_box.dataframe(live_df)
+
 
 
