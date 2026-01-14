@@ -2,10 +2,6 @@ import pandas as pd
 from src.risk_scoring import compute_news, compute_mews
 
 def generate_patient_risk_table(df, df_ml, model, scaler, feature_cols, predict_fn):
-    """
-    df    : raw dataframe (for display fields)
-    df_ml : cleaned numeric dataframe (for ML)
-    """
     rows = []
 
     for idx in df.index:
@@ -14,10 +10,8 @@ def generate_patient_risk_table(df, df_ml, model, scaler, feature_cols, predict_
 
         row_ml_df = pd.DataFrame([row_ml])
 
-        # ML prediction MUST use df_ml
         ml_risk = predict_fn(model, scaler, feature_cols, row_ml_df)
 
-        # Clinical scores can use raw row
         news = compute_news(row_raw)
         mews = compute_mews(row_raw)
 
@@ -34,7 +28,7 @@ def generate_patient_risk_table(df, df_ml, model, scaler, feature_cols, predict_
             "department": row_raw["department"],
             "NEWS": news,
             "MEWS": mews,
-            "ML_Risk": round(ml_risk, 3),
+            "ML_Risk": round(float(ml_risk), 3),
             "Status": status
         })
 
