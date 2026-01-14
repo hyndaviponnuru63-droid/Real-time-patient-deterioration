@@ -5,9 +5,7 @@ from sklearn.preprocessing import MinMaxScaler
 
 def train_lstm(df):
     scaler = MinMaxScaler()
-
     feature_cols = df.drop(['death_inhosp'], axis=1).columns.tolist()
-
     X = df[feature_cols].values
     y = df['death_inhosp'].values
 
@@ -17,25 +15,12 @@ def train_lstm(df):
     model = Sequential()
     model.add(LSTM(32, input_shape=(1, X_scaled.shape[2])))
     model.add(Dense(1, activation='sigmoid'))
-
-    model.compile(
-        loss='binary_crossentropy',
-        optimizer='adam',
-        metrics=['accuracy']
-    )
-
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
     model.fit(X_scaled, y, epochs=5, batch_size=16, verbose=0)
-
     return model, scaler, feature_cols
 
-
 def predict_lstm(model, scaler, feature_cols, df_row):
-    """
-    df_row: pandas DataFrame (1 row, original columns)
-    """
     X = df_row[feature_cols].values
     X_scaled = scaler.transform(X)
     X_scaled = X_scaled.reshape((1, 1, X_scaled.shape[1]))
-
-    prediction = model.predict(X_scaled, verbose=0)
-    return float(prediction[0][0])
+    return float(model.predict(X_scaled, verbose=0)[0][0])
