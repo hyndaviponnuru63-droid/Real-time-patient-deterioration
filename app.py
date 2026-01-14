@@ -55,7 +55,9 @@ for live_df in sensor:
 
     # Predict risk
     ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
-    st.session_state.risk_history.append(ml_risk)
+    if ml_risk is not None:
+        st.session_state.risk_history.append(float(ml_risk))
+
 
     # Keep only last 20 points for trend
     if len(st.session_state.risk_history) > 20:
@@ -77,9 +79,17 @@ for live_df in sensor:
         status_box.success("🟢 Patient stable. No warning signs.")
 
     # ---------------- Display trend ----------------
-    trend_data = pd.DataFrame(st.session_state.risk_history, columns=["Risk Score"])
-    trend_box.line_chart(trend_data)
+    
+    if len(st.session_state.risk_history) >= 2:
+        trend_data = pd.DataFrame(
+            st.session_state.risk_history,
+            columns=["Risk Score"]
+        )
+        trend_box.line_chart(trend_data)
+    else:
+        trend_box.info("Collecting live risk data for this patient…")
 
     # ---------------- Display live data ----------------
     data_box.dataframe(live_df)
+
 
