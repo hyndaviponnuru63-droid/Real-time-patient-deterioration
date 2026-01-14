@@ -1,16 +1,27 @@
 import pandas as pd
+import numpy as np
 
 def _get_value(row, col):
     """
-    Safely extract a scalar value whether row is:
-    - pandas Series
-    - 1-row pandas DataFrame
+    Always return a Python scalar (float or int),
+    never a pandas Series.
     """
-    if isinstance(row, pd.DataFrame):
-        return row.iloc[0][col] if col in row.columns else None
-    elif isinstance(row, pd.Series):
-        return row[col] if col in row.index else None
-    return None
+    try:
+        if isinstance(row, pd.DataFrame):
+            val = row.iloc[0][col]
+        elif isinstance(row, pd.Series):
+            val = row[col]
+        else:
+            return None
+
+        # Convert pandas / numpy types → Python scalar
+        if pd.isna(val):
+            return None
+
+        return float(val)
+
+    except Exception:
+        return None
 
 
 def compute_news(row):
