@@ -7,15 +7,38 @@ from src.live_sensor import simulate_live_sensor
 from src.alerts import generate_risk_summary
 
 # ==================================================
-# STEP 2: CACHED FUNCTION FOR RISK TABLES
+# STREAMLIT PAGE
+# ==================================================
+st.set_page_config(page_title="ICU Dashboard", layout="wide")
+st.title("🫀 Real-Time ICU Patient Deterioration Monitor")
+
+# ==================================================
+# LOAD DATA
+# ==================================================
+df = load_data("clinical_data.csv")
+df_ml = preprocess_for_ml(df)
+
+# ==================================================
+# CACHE MODEL (RESOURCE)
+# ==================================================
+@st.cache_resource
+def load_model(df_ml):
+    return train_lstm(df_ml)
+
+model, scaler, feature_cols = load_model(df_ml)
+
+# ==================================================
+# CACHE DATA-ONLY RISK TABLES
 # ==================================================
 @st.cache_data
-def build_risk_tables(df, model, scaler, feature_cols):
+def build_risk_tables(df):
     critical_list = []
     monitor_list = []
 
     for _, row in df.iterrows():
         row_df = pd.DataFrame([row])
+
+        # use global model safely
         ml_risk = predict_lstm(model, scaler, feature_cols, row_df)
 
         status, reasons = generate_risk_summary(row, ml_risk, [])
@@ -50,37 +73,10 @@ def build_risk_tables(df, model, scaler, feature_cols):
 
 
 # ==================================================
-# STEP 1: CACHED MODEL LOADING
-# ==================================================
-@st.cache_resource
-def load_model(df_ml):
-    return train_lstm(df_ml)
-
-
-# ==================================================
-# STREAMLIT PAGE
-# ==================================================
-st.set_page_config(page_title="ICU Dashboard", layout="wide")
-st.title("🫀 Real-Time ICU Patient Deterioration Monitor")
-
-# ==================================================
-# LOAD DATA
-# ==================================================
-df = load_data("clinical_data.csv")
-df_ml = preprocess_for_ml(df)
-
-# ==================================================
-# LOAD MODEL (CACHED)
-# ==================================================
-model, scaler, feature_cols = load_model(df_ml)
-
-# ==================================================
-# BUILD RISK TABLES (CACHED + SPINNER)
+# BUILD RISK TABLES (WITH SPINNER)
 # ==================================================
 with st.spinner("Loading ICU risk dashboard..."):
-    critical_df, monitor_df = build_risk_tables(
-        df, model, scaler, feature_cols
-    )
+    critical_df, monitor_df = build_risk_tables(df)
 
 # ==================================================
 # DISPLAY RISK TABLES + DOWNLOAD
@@ -127,13 +123,9 @@ selected_patient = st.selectbox("Select Patient ID", patient_ids)
 
 patient_row = df[df["subjectid"] == selected_patient].iloc[0]
 
-st.markdown(f"**Currently Monitoring Patient ID:** {selected_patient}")
-
-# Session state
 if "risk_history" not in st.session_state:
     st.session_state.risk_history = []
 
-# Start button (CRITICAL FIX)
 start_monitoring = st.button("▶️ Start Live Monitoring")
 
 if start_monitoring:
@@ -143,7 +135,7 @@ if start_monitoring:
     trend_box = st.empty()
     data_box = st.empty()
 
-    for _ in range(20):  # ✅ LIMITED LOOP (CLOUD SAFE)
+    for _ in range(20):  # SAFE LIMIT
         live_df = next(sensor)
 
         ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
