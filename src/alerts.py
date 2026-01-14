@@ -1,20 +1,18 @@
 from src.risk_scoring import compute_news, compute_mews
 
 def generate_risk_summary(row, ml_risk, risk_history):
-    """
-    Returns exactly two values: status (string), reasons (list)
-    """
     news = compute_news(row)
     mews = compute_mews(row)
 
     reasons = []
 
+    # Add reasons based on thresholds
     if news >= 3:
         reasons.append(f"NEWS score high ({news})")
     if mews >= 3:
         reasons.append(f"MEWS score high ({mews})")
-    if ml_risk > 0.6:
-        reasons.append(f"ML deterioration risk high ({ml_risk:.2f})")
+    if ml_risk > 0.4:  # lower threshold for MONITOR
+        reasons.append(f"ML deterioration risk elevated ({ml_risk:.2f})")
 
     # ICU status
     if news >= 5 or ml_risk > 0.6:
@@ -24,4 +22,4 @@ def generate_risk_summary(row, ml_risk, risk_history):
     else:
         status = "STABLE"
 
-    return status, reasons  # <-- Return exactly two values
+    return status, reasons
