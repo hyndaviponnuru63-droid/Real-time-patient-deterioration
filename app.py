@@ -28,7 +28,7 @@ def load_model(df_ml):
 model, scaler, feature_cols = load_model(df_ml)
 
 # ==================================================
-# CACHE DATA-ONLY RISK TABLES
+# RISK TABLE BUILDER
 # ==================================================
 @st.cache_data
 def build_risk_tables(df):
@@ -38,10 +38,13 @@ def build_risk_tables(df):
     for _, row in df.iterrows():
         row_df = pd.DataFrame([row])
 
-        # use global model safely
+        # Use global model safely
         ml_risk = predict_lstm(model, scaler, feature_cols, row_df)
-
         status, reasons = generate_risk_summary(row, ml_risk, [])
+
+        # Ensure reasons is never empty
+        if not reasons:
+            reasons = ["No major warning signs"]
 
         record = {
             "subjectid": row["subjectid"],
@@ -57,59 +60,49 @@ def build_risk_tables(df):
         elif status == "MONITOR":
             monitor_list.append(record)
 
-    critical_df = (
-        pd.DataFrame(critical_list)
-        .sort_values("ml_risk", ascending=False)
-        .head(10)
-    )
-
-    monitor_df = (
-        pd.DataFrame(monitor_list)
-        .sort_values("ml_risk", ascending=False)
-        .head(10)
-    )
+    critical_df = pd.DataFrame(critical_list).sort_values("ml_risk", ascending=False).head(10)
+    monitor_df = pd.DataFrame(monitor_list).sort_values("ml_risk", ascending=False).head(10)
 
     return critical_df, monitor_df
 
-
 # ==================================================
-# BUILD RISK TABLES (WITH SPINNER)
-# ==================================================
-with st.spinner("Loading ICU risk dashboard..."):
-    critical_df, monitor_df = build_risk_tables(df)
-
-# ==================================================
-# DISPLAY RISK TABLES + DOWNLOAD
+# BUTTON TO GENERATE RISK TABLES
 # ==================================================
 st.subheader("🚨 High-Risk Patient Lists")
 
-col1, col2 = st.columns(2)
+if st.button("🔍 Generate Risk Tables"):
+    with st.spinner("Analyzing patient risks..."):
+        # Optional: limit dataset for speed
+        limited_df = df.head(500)
+        critical_df, monitor_df = build_risk_tables(limited_df)
 
-with col1:
-    st.markdown("### 🔴 Critical Patients (Top 10)")
-    if not critical_df.empty:
-        st.dataframe(critical_df)
-        st.download_button(
-            "⬇️ Download Critical CSV",
-            critical_df.to_csv(index=False),
-            file_name="critical_patients_top10.csv",
-            mime="text/csv"
-        )
-    else:
-        st.success("No critical patients detected")
+    col1, col2 = st.columns(2)
 
-with col2:
-    st.markdown("### 🟡 Monitor Patients (Top 10)")
-    if not monitor_df.empty:
-        st.dataframe(monitor_df)
-        st.download_button(
-            "⬇️ Download Monitor CSV",
-            monitor_df.to_csv(index=False),
-            file_name="monitor_patients_top10.csv",
-            mime="text/csv"
-        )
-    else:
-        st.success("No patients need monitoring")
+    with col1:
+        st.markdown("### 🔴 Critical Patients (Top 10)")
+        if not critical_df.empty:
+            st.dataframe(critical_df)
+            st.download_button(
+                "⬇️ Download Critical CSV",
+                critical_df.to_csv(index=False),
+                file_name="critical_patients_top10.csv",
+                mime="text/csv"
+            )
+        else:
+            st.success("No critical patients found")
+
+    with col2:
+        st.markdown("### 🟡 Monitor Patients (Top 10)")
+        if not monitor_df.empty:
+            st.dataframe(monitor_df)
+            st.download_button(
+                "⬇️ Download Monitor CSV",
+                monitor_df.to_csv(index=False),
+                file_name="monitor_patients_top10.csv",
+                mime="text/csv"
+            )
+        else:
+            st.success("No monitor patients found")
 
 st.divider()
 
@@ -120,7 +113,6 @@ st.subheader("🧑‍⚕️ Live Patient Monitoring")
 
 patient_ids = df["subjectid"].unique()
 selected_patient = st.selectbox("Select Patient ID", patient_ids)
-
 patient_row = df[df["subjectid"] == selected_patient].iloc[0]
 
 if "risk_history" not in st.session_state:
