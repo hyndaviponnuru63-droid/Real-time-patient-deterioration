@@ -40,6 +40,18 @@ risk_table = generate_patient_risk_table(
     predict_lstm
 )
 
+# 🔍 DEBUG BLOCK — ADD HERE
+st.write("Risk table shape:", risk_table.shape)
+
+if "Status" in risk_table.columns:
+    st.write("Status counts:")
+    st.write(risk_table["Status"].value_counts())
+else:
+    st.error("❌ 'Status' column missing in risk_table")
+
+st.dataframe(risk_table.head(10))
+
+# Existing filter
 high_risk_df = risk_table[
     risk_table["Status"].isin(["CRITICAL", "MONITOR"])
 ]
@@ -122,6 +134,7 @@ for live_df in sensor:
 
     # ---------------- Display live data ----------------
     data_box.dataframe(live_df)
+
 
 
 
