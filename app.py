@@ -1,64 +1,89 @@
 import streamlit as st
 import pandas as pd
+
 from src.data_processing import load_data, preprocess_for_ml
 from src.lstm_model import train_lstm, predict_lstm
 from src.live_sensor import simulate_live_sensor
 from src.alerts import generate_risk_summary
 
+# ==================================================
+# STEP 2: CACHED FUNCTION FOR RISK TABLES
+# ==================================================
+@st.cache_data
+def build_risk_tables(df, model, scaler, feature_cols):
+    critical_list = []
+    monitor_list = []
+
+    for _, row in df.iterrows():
+        row_df = pd.DataFrame([row])
+        ml_risk = predict_lstm(model, scaler, feature_cols, row_df)
+
+        status, reasons = generate_risk_summary(row, ml_risk, [])
+
+        record = {
+            "subjectid": row["subjectid"],
+            "age": row.get("age"),
+            "sex": row.get("sex"),
+            "ml_risk": round(float(ml_risk), 3),
+            "reasons": ", ".join(reasons),
+            "status": status
+        }
+
+        if status == "CRITICAL":
+            critical_list.append(record)
+        elif status == "MONITOR":
+            monitor_list.append(record)
+
+    critical_df = (
+        pd.DataFrame(critical_list)
+        .sort_values("ml_risk", ascending=False)
+        .head(10)
+    )
+
+    monitor_df = (
+        pd.DataFrame(monitor_list)
+        .sort_values("ml_risk", ascending=False)
+        .head(10)
+    )
+
+    return critical_df, monitor_df
+
+
+# ==================================================
+# STEP 1: CACHED MODEL LOADING
+# ==================================================
+@st.cache_resource
+def load_model(df_ml):
+    return train_lstm(df_ml)
+
+
+# ==================================================
+# STREAMLIT PAGE
+# ==================================================
 st.set_page_config(page_title="ICU Dashboard", layout="wide")
 st.title("🫀 Real-Time ICU Patient Deterioration Monitor")
 
-# ===============================
-# Load and preprocess
-# ===============================
+# ==================================================
+# LOAD DATA
+# ==================================================
 df = load_data("clinical_data.csv")
 df_ml = preprocess_for_ml(df)
 
-# Train model
-model, scaler, feature_cols = train_lstm(df_ml)
+# ==================================================
+# LOAD MODEL (CACHED)
+# ==================================================
+model, scaler, feature_cols = load_model(df_ml)
 
 # ==================================================
-# 🔴🟡 GLOBAL CRITICAL / MONITOR PATIENT LISTS
+# BUILD RISK TABLES (CACHED + SPINNER)
 # ==================================================
-critical_list = []
-monitor_list = []
-
-for _, row in df.iterrows():
-    row_df = pd.DataFrame([row])
-    ml_risk = predict_lstm(model, scaler, feature_cols, row_df)
-
-    status, reasons = generate_risk_summary(
-        row, ml_risk, []
+with st.spinner("Loading ICU risk dashboard..."):
+    critical_df, monitor_df = build_risk_tables(
+        df, model, scaler, feature_cols
     )
 
-    record = {
-        "subjectid": row["subjectid"],
-        "age": row.get("age"),
-        "sex": row.get("sex"),
-        "ml_risk": round(float(ml_risk), 3),
-        "reasons": ", ".join(reasons),
-        "status": status
-    }
-
-    if status == "CRITICAL":
-        critical_list.append(record)
-    elif status == "MONITOR":
-        monitor_list.append(record)
-
-critical_df = (
-    pd.DataFrame(critical_list)
-    .sort_values("ml_risk", ascending=False)
-    .head(10)
-)
-
-monitor_df = (
-    pd.DataFrame(monitor_list)
-    .sort_values("ml_risk", ascending=False)
-    .head(10)
-)
-
 # ==================================================
-# 📋 DISPLAY + DOWNLOAD
+# DISPLAY RISK TABLES + DOWNLOAD
 # ==================================================
 st.subheader("🚨 High-Risk Patient Lists")
 
@@ -93,33 +118,23 @@ with col2:
 st.divider()
 
 # ==================================================
-# 🔄 EXISTING LIVE MONITORING (UNCHANGED)
+# LIVE PATIENT MONITORING
 # ==================================================
-# Select patient
+st.subheader("🧑‍⚕️ Live Patient Monitoring")
+
 patient_ids = df["subjectid"].unique()
 selected_patient = st.selectbox("Select Patient ID", patient_ids)
+
 patient_row = df[df["subjectid"] == selected_patient].iloc[0]
 
-st.markdown(f"### 🧑‍⚕️ Currently Monitoring Patient ID: {selected_patient}")
+st.markdown(f"**Currently Monitoring Patient ID:** {selected_patient}")
 
 # Session state
-if "last_patient" not in st.session_state:
-    st.session_state.last_patient = selected_patient
+if "risk_history" not in st.session_state:
     st.session_state.risk_history = []
 
-if selected_patient != st.session_state.last_patient:
-    st.session_state.risk_history = []
-    st.session_state.last_patient = selected_patient
-
-# Live sensor
-sensor = simulate_live_sensor(patient_row)
-status_box = st.empty()
-trend_box = st.empty()
-data_box = st.empty()
-
-# Live loop (AS-IS)
-st.divider()
-start_monitoring = st.button("▶️Start Live Monitoring")
+# Start button (CRITICAL FIX)
+start_monitoring = st.button("▶️ Start Live Monitoring")
 
 if start_monitoring:
     sensor = simulate_live_sensor(patient_row)
@@ -128,13 +143,12 @@ if start_monitoring:
     trend_box = st.empty()
     data_box = st.empty()
 
-    for _ in range(20):  # ✅ LIMIT LOOP (VERY IMPORTANT)
+    for _ in range(20):  # ✅ LIMITED LOOP (CLOUD SAFE)
         live_df = next(sensor)
 
         ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
 
-        if ml_risk is not None:
-            st.session_state.risk_history.append(float(ml_risk))
+        st.session_state.risk_history.append(float(ml_risk))
         if len(st.session_state.risk_history) > 10:
             st.session_state.risk_history.pop(0)
 
@@ -153,7 +167,10 @@ if start_monitoring:
 
         if len(st.session_state.risk_history) >= 2:
             trend_box.line_chart(
-                pd.DataFrame(st.session_state.risk_history, columns=["Risk Score"])
+                pd.DataFrame(
+                    st.session_state.risk_history,
+                    columns=["Risk Score"]
+                )
             )
 
         data_box.dataframe(live_df)
