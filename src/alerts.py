@@ -24,4 +24,4 @@ def generate_risk_summary(row, ml_risk, risk_history):
     else:
         status = "STABLE"
 
-    return status, reasons
+    return status, reasons  # <-- Return exactly two values
