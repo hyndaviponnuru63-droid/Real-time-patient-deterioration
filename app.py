@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-
 from src.data_processing import load_data, preprocess_for_ml
 from src.lstm_model import train_lstm, predict_lstm
 from src.patient_overview import generate_patient_risk_table
@@ -16,11 +15,9 @@ df_ml, feature_cols = preprocess_for_ml(df)
 
 st.success("✅ Data loaded successfully")
 st.write("Dataset shape:", df.shape)
-st.dataframe(df.head(5))
 
 # ---------------- TRAIN MODEL ----------------
 model, scaler = train_lstm(df_ml, feature_cols)
-
 st.success("✅ LSTM model trained")
 
 # ---------------- HIGH-RISK PATIENT OVERVIEW ----------------
@@ -35,24 +32,25 @@ risk_table = generate_patient_risk_table(
     predict_lstm
 )
 
-st.write("Risk table shape:", risk_table.shape)
-st.dataframe(risk_table.head(10))
+# Show full table with features
+st.dataframe(risk_table)
 
-high_risk = risk_table[risk_table["Status"].isin(["CRITICAL", "MONITOR"])]
+# Download CSV button
+st.download_button(
+    "⬇️ Download High-Risk Patients CSV",
+    risk_table.to_csv(index=False),
+    "high_risk_patients.csv",
+    "text/csv"
+)
 
-if not high_risk.empty:
-    st.dataframe(high_risk)
-    st.download_button(
-        "⬇️ Download High-Risk Patients",
-        high_risk.to_csv(index=False),
-        "high_risk_patients.csv",
-        "text/csv"
-    )
-else:
-    st.success("✅ No high-risk patients found")
+# Filter high-risk patients for reference
+high_risk_df = risk_table[risk_table["Status"].isin(["CRITICAL", "MONITOR"])]
+if not high_risk_df.empty:
+    st.markdown("### 🔴 High-Risk Patients")
+    st.dataframe(high_risk_df)
 
 # ---------------- SELECT PATIENT ----------------
-st.markdown("## 🧑‍⚕️ Live Patient Monitoring")
+st.markdown("## 🧑‍⚕️ Select Patient to Monitor Live")
 
 patient_id = st.selectbox(
     "Select Patient ID",
@@ -67,41 +65,39 @@ if "risk_history" not in st.session_state:
 
 # ---------------- LIVE SENSOR ----------------
 sensor = simulate_live_sensor(patient_row)
-
 status_box = st.empty()
 trend_box = st.empty()
 data_box = st.empty()
 
-# ---------------- LIVE LOOP ----------------
+# ---------------- LIVE MONITORING LOOP ----------------
 for live_df in sensor:
 
-    ml_risk = predict_lstm(
-        model,
-        scaler,
-        feature_cols,
-        live_df
-    )
-
+    # Predict ML risk
+    ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
     st.session_state.risk_history.append(ml_risk)
     st.session_state.risk_history = st.session_state.risk_history[-20:]
 
+    # Generate status & reasons
     status, reasons = generate_risk_summary(
         live_df.iloc[0],
         ml_risk,
         st.session_state.risk_history
     )
 
+    # Display patient status
     if status == "CRITICAL":
-        status_box.error("🔴 CRITICAL CONDITION")
+        status_box.error(f"🔴 CRITICAL CONDITION\nReasons: {', '.join(reasons)}")
     elif status == "MONITOR":
-        status_box.warning("🟡 NEEDS MONITORING")
+        status_box.warning(f"🟡 NEEDS MONITORING\nReasons: {', '.join(reasons)}")
     else:
         status_box.success("🟢 Patient stable. No warning signs.")
 
+    # Display live risk trend
     trend_box.line_chart(
         pd.DataFrame(st.session_state.risk_history, columns=["Risk Score"])
     )
 
+    # Display live patient row
     data_box.dataframe(live_df)
 
-    break  # ⬅️ IMPORTANT: prevents infinite loop in Streamlit
+    break  # Prevent infinite loop in Streamlit
