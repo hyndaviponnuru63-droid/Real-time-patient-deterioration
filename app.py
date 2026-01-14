@@ -32,11 +32,15 @@ model, scaler, feature_cols = load_model(df_ml)
 # ==================================================
 @st.cache_data
 def build_risk_tables(df):
-    records = []
+    critical_list = []
+    monitor_list = []
 
     for _, row in df.iterrows():
         row_df = pd.DataFrame([row])
+
+        # use global model safely
         ml_risk = predict_lstm(model, scaler, feature_cols, row_df)
+
         status, reasons = generate_risk_summary(row, ml_risk, [])
 
         record = {
@@ -47,53 +51,65 @@ def build_risk_tables(df):
             "reasons": ", ".join(reasons),
             "status": status
         }
-        records.append(record)
 
-    df_all = pd.DataFrame(records).sort_values("ml_risk", ascending=False)
+        if status == "CRITICAL":
+            critical_list.append(record)
+        elif status == "MONITOR":
+            monitor_list.append(record)
 
-    # Pick top 10 for each status if possible
-    critical_df = df_all[df_all["status"] == "CRITICAL"].head(10)
-    monitor_df = df_all[df_all["status"] == "MONITOR"].head(10)
+    critical_df = (
+        pd.DataFrame(critical_list)
+        .sort_values("ml_risk", ascending=False)
+        .head(10)
+    )
+
+    monitor_df = (
+        pd.DataFrame(monitor_list)
+        .sort_values("ml_risk", ascending=False)
+        .head(10)
+    )
 
     return critical_df, monitor_df
 
+
 # ==================================================
-# BUTTON TO GENERATE HIGH-RISK TABLES
+# BUILD RISK TABLES (WITH SPINNER)
+# ==================================================
+with st.spinner("Loading ICU risk dashboard..."):
+    critical_df, monitor_df = build_risk_tables(df)
+
+# ==================================================
+# DISPLAY RISK TABLES + DOWNLOAD
 # ==================================================
 st.subheader("🚨 High-Risk Patient Lists")
 
-if st.button("🔍 Generate Risk Tables"):
-    with st.spinner("Analyzing patient risks..."):
-        # Use all rows, but for speed you can limit for huge datasets
-        critical_df, monitor_df = build_risk_tables(df)
+col1, col2 = st.columns(2)
 
-    col1, col2 = st.columns(2)
+with col1:
+    st.markdown("### 🔴 Critical Patients (Top 10)")
+    if not critical_df.empty:
+        st.dataframe(critical_df)
+        st.download_button(
+            "⬇️ Download Critical CSV",
+            critical_df.to_csv(index=False),
+            file_name="critical_patients_top10.csv",
+            mime="text/csv"
+        )
+    else:
+        st.success("No critical patients detected")
 
-    with col1:
-        st.markdown("### 🔴 Critical Patients (Top 10)")
-        if not critical_df.empty:
-            st.dataframe(critical_df)
-            st.download_button(
-                "⬇️ Download Critical CSV",
-                critical_df.to_csv(index=False),
-                file_name="critical_patients_top10.csv",
-                mime="text/csv"
-            )
-        else:
-            st.success("No critical patients found")
-
-    with col2:
-        st.markdown("### 🟡 Monitor Patients (Top 10)")
-        if not monitor_df.empty:
-            st.dataframe(monitor_df)
-            st.download_button(
-                "⬇️ Download Monitor CSV",
-                monitor_df.to_csv(index=False),
-                file_name="monitor_patients_top10.csv",
-                mime="text/csv"
-            )
-        else:
-            st.success("No monitor patients found")
+with col2:
+    st.markdown("### 🟡 Monitor Patients (Top 10)")
+    if not monitor_df.empty:
+        st.dataframe(monitor_df)
+        st.download_button(
+            "⬇️ Download Monitor CSV",
+            monitor_df.to_csv(index=False),
+            file_name="monitor_patients_top10.csv",
+            mime="text/csv"
+        )
+    else:
+        st.success("No patients need monitoring")
 
 st.divider()
 
@@ -104,6 +120,7 @@ st.subheader("🧑‍⚕️ Live Patient Monitoring")
 
 patient_ids = df["subjectid"].unique()
 selected_patient = st.selectbox("Select Patient ID", patient_ids)
+
 patient_row = df[df["subjectid"] == selected_patient].iloc[0]
 
 if "risk_history" not in st.session_state:
@@ -118,10 +135,11 @@ if start_monitoring:
     trend_box = st.empty()
     data_box = st.empty()
 
-    for _ in range(20):  # Safe limit to avoid infinite loop
+    for _ in range(20):  # SAFE LIMIT
         live_df = next(sensor)
 
         ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
+
         st.session_state.risk_history.append(float(ml_risk))
         if len(st.session_state.risk_history) > 10:
             st.session_state.risk_history.pop(0)
@@ -133,9 +151,9 @@ if start_monitoring:
         )
 
         if status == "CRITICAL":
-            status_box.error(f"🔴 CRITICAL CONDITION\nReasons: {', '.join(reasons)}")
+            status_box.error("🔴 CRITICAL CONDITION")
         elif status == "MONITOR":
-            status_box.warning(f"🟡 NEEDS MONITORING\nReasons: {', '.join(reasons)}")
+            status_box.warning("🟡 NEEDS MONITORING")
         else:
             status_box.success("🟢 Patient stable")
 
