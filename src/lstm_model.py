@@ -20,7 +20,25 @@ def train_lstm(df):
     return model, scaler, feature_cols
 
 def predict_lstm(model, scaler, feature_cols, df_row):
-    X = df_row[feature_cols].values
+    row = df_row.copy()
+
+    # Ensure all features exist
+    for col in feature_cols:
+        if col not in row.columns:
+            row[col] = 0
+
+    # Fill missing values
+    row = row[feature_cols].fillna(0)
+
+    X = row.values
     X_scaled = scaler.transform(X)
     X_scaled = X_scaled.reshape((1, 1, X_scaled.shape[1]))
-    return float(model.predict(X_scaled, verbose=0)[0][0])
+
+    risk = model.predict(X_scaled, verbose=0)[0][0]
+
+    # Safety clamp
+    if np.isnan(risk):
+        return 0.0
+
+    return float(np.clip(risk, 0, 1))
+
