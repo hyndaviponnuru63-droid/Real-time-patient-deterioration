@@ -6,7 +6,10 @@ from src.lstm_model import train_lstm, predict_lstm
 from src.live_sensor import simulate_live_sensor
 from src.alerts import generate_risk_summary
 
-st.set_page_config(page_title="ICU Patient Deterioration Monitor", layout="wide")
+st.set_page_config(
+    page_title="ICU Patient Deterioration Monitor",
+    layout="wide"
+)
 
 st.title("🫀 Real-Time ICU Patient Deterioration Dashboard")
 
@@ -15,7 +18,7 @@ df = load_data("clinical_data.csv")
 df_ml = preprocess_for_ml(df)
 
 # ---------------- TRAIN MODEL ----------------
-model = train_lstm(df_ml)
+model, scaler = train_lstm(df_ml)
 
 # ---------------- SELECT PATIENT ----------------
 patient_ids = df["subjectid"].unique()
@@ -23,7 +26,9 @@ selected_patient = st.selectbox("Select Patient ID", patient_ids)
 
 patient_row = df[df["subjectid"] == selected_patient].iloc[0]
 
-st.markdown(f"### 🧑‍⚕️ Currently Monitoring Patient ID: **{selected_patient}**")
+st.markdown(
+    f"### 🧑‍⚕️ Currently Monitoring Patient ID: **{selected_patient}**"
+)
 
 # ---------------- SESSION STATE ----------------
 if "last_patient" not in st.session_state:
@@ -31,7 +36,7 @@ if "last_patient" not in st.session_state:
     st.session_state.risk_history = []
 
 if selected_patient != st.session_state.last_patient:
-    st.session_state.risk_history = []   # RESET trend
+    st.session_state.risk_history = []   # reset trend
     st.session_state.last_patient = selected_patient
 
 # ---------------- LIVE SENSOR ----------------
@@ -44,7 +49,13 @@ data_box = st.empty()
 # ---------------- LIVE LOOP ----------------
 for live_df in sensor:
 
-    ml_risk = predict_lstm(model, live_df)
+    # ML prediction (IMPORTANT FIX)
+    ml_risk = predict_lstm(
+        model,
+        scaler,
+        live_df.select_dtypes(include="number")
+    )
+
     st.session_state.risk_history.append(ml_risk)
 
     if len(st.session_state.risk_history) > 10:
@@ -69,5 +80,3 @@ for live_df in sensor:
 
     # -------- TABLE --------
     data_box.dataframe(live_df)
-
-
