@@ -149,11 +149,12 @@ if start_monitoring:
             ml_risk,
             st.session_state.risk_history
         )
-
+        
+        # Status
         if status == "CRITICAL":
-            status_box.error("🔴 CRITICAL CONDITION")
+            status_box.error(f"🔴 CRITICAL CONDITION\nReasons: {', '.join(reasons)}")
         elif status == "MONITOR":
-            status_box.warning("🟡 NEEDS MONITORING")
+            status_box.warning(f"🟡 NEEDS MONITORING\nReasons: {', '.join(reasons)}")
         else:
             status_box.success("🟢 Patient stable")
 
@@ -166,3 +167,4 @@ if start_monitoring:
             )
 
         data_box.dataframe(live_df)
+
