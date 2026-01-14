@@ -44,7 +44,7 @@ data_box = st.empty()
 # ---------------- LIVE LOOP ----------------
 for live_df in sensor:
 
-    ml_risk = predict_lstm(model, live_df)[0]
+    ml_risk = predict_lstm(model, live_df)
     st.session_state.risk_history.append(ml_risk)
 
     if len(st.session_state.risk_history) > 10:
@@ -69,4 +69,5 @@ for live_df in sensor:
 
     # -------- TABLE --------
     data_box.dataframe(live_df)
+
 
