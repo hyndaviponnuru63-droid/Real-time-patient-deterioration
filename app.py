@@ -118,32 +118,42 @@ trend_box = st.empty()
 data_box = st.empty()
 
 # Live loop (AS-IS)
-for live_df in sensor:
-    ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
+st.divider()
+start_monitoring = st.button("▶️Start Live Monitoring")
 
-    if ml_risk is not None:
-        st.session_state.risk_history.append(float(ml_risk))
-    if len(st.session_state.risk_history) > 10:
-        st.session_state.risk_history.pop(0)
+if start_monitoring:
+    sensor = simulate_live_sensor(patient_row)
 
-    status, reasons = generate_risk_summary(
-        live_df.iloc[0],
-        ml_risk,
-        st.session_state.risk_history
-    )
+    status_box = st.empty()
+    trend_box = st.empty()
+    data_box = st.empty()
 
-    if status == "CRITICAL":
-        status_box.error("🔴 CRITICAL CONDITION")
-    elif status == "MONITOR":
-        status_box.warning("🟡 NEEDS MONITORING")
-    else:
-        status_box.success("🟢 Patient stable. No warning signs.")
+    for _ in range(20):  # ✅ LIMIT LOOP (VERY IMPORTANT)
+        live_df = next(sensor)
 
-    if len(st.session_state.risk_history) >= 2:
-        trend_box.line_chart(
-            pd.DataFrame(st.session_state.risk_history, columns=["Risk Score"])
+        ml_risk = predict_lstm(model, scaler, feature_cols, live_df)
+
+        if ml_risk is not None:
+            st.session_state.risk_history.append(float(ml_risk))
+        if len(st.session_state.risk_history) > 10:
+            st.session_state.risk_history.pop(0)
+
+        status, reasons = generate_risk_summary(
+            live_df.iloc[0],
+            ml_risk,
+            st.session_state.risk_history
         )
-    else:
-        trend_box.info("Collecting live risk data for this patient…")
 
-    data_box.dataframe(live_df)
+        if status == "CRITICAL":
+            status_box.error("🔴 CRITICAL CONDITION")
+        elif status == "MONITOR":
+            status_box.warning("🟡 NEEDS MONITORING")
+        else:
+            status_box.success("🟢 Patient stable")
+
+        if len(st.session_state.risk_history) >= 2:
+            trend_box.line_chart(
+                pd.DataFrame(st.session_state.risk_history, columns=["Risk Score"])
+            )
+
+        data_box.dataframe(live_df)
